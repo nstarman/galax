@@ -33,7 +33,6 @@ dependencies = [
   "astropy >= 5.3",
   "diffrax",
   "equinox",
-  "gala >= 1.7",
   "jax",
   "jax_cosmo",
   "typing_extensions",
@@ -110,7 +109,7 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [[tool.mypy.overrides]]
-module = ["astropy.*", "diffrax.*", "equinox.*", "gala.*", "jax.*", "jax_cosmo.*"]
+module = ["astropy.*", "diffrax.*", "equinox.*", "jax.*", "jax_cosmo.*"]
 ignore_missing_imports = true
 
 

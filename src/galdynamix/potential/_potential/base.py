@@ -12,9 +12,9 @@ import jax
 import jax.numpy as xp
 import jax.typing as jt
 from astropy.constants import G as apy_G
-from gala.units import UnitSystem, dimensionless
 
 from galdynamix.potential._potential.param.field import ParameterField
+from galdynamix.units import UnitSystem, dimensionless
 from galdynamix.utils import partial_jit
 
 
