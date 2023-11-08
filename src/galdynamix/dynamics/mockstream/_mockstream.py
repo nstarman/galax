@@ -25,11 +25,11 @@ if TYPE_CHECKING:
 class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
     df: BaseStreamDF
     potential: AbstractPotentialBase
-    progenitor_potential: AbstractPotentialBase | None = None
+    # progenitor_potential: AbstractPotentialBase | None = None
 
-    @property
-    def self_gravity(self) -> bool:
-        return self.progenitor_potential is not None
+    # @property
+    # def self_gravity(self) -> bool:
+    #     return self.progenitor_potential is not None
 
     # ==========================================================================
 
