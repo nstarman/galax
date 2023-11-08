@@ -6,6 +6,7 @@ from __future__ import annotations
 __all__ = ["BaseStreamDF", "FardalStreamDF"]
 
 import abc
+from typing import TYPE_CHECKING, TypeAlias
 
 import equinox as eqx
 import jax
@@ -14,6 +15,10 @@ import jax.typing as jt
 
 from galdynamix.potential._potential.base import AbstractPotentialBase
 from galdynamix.utils import partial_jit
+
+if TYPE_CHECKING:
+    _wifT: TypeAlias = tuple[jt.Array, jt.Array, jt.Array, jt.Array]
+    _carryT: TypeAlias = tuple[int, jt.Array, jt.Array, jt.Array, jt.Array]
 
 
 class BaseStreamDF(eqx.Module):  # type: ignore[misc]
@@ -25,20 +30,60 @@ class BaseStreamDF(eqx.Module):  # type: ignore[misc]
             msg = "You must generate either leading or trailing tails (or both!)"
             raise ValueError(msg)
 
-    @abc.abstractmethod
+    @partial_jit(static_argnames=("seed_num",))
     def sample(
         self,
         potential: AbstractPotentialBase,
         x: jt.Array,
         v: jt.Array,
-        prog_mass: jt.Array,
+        prog_mass: jt.Numeric,
         i: int,
-        t: jt.Array,
+        t: jt.Numeric,
         *,
         seed_num: int,
     ) -> tuple[jt.Array, jt.Array, jt.Array, jt.Array]:
-        """Sample the DF."""
-        raise NotImplementedError
+        """Generate stream particle initial conditions.
+
+        TODO: make this work over a batch of positions/times/masses.
+
+        Parameters
+        ----------
+        potential : AbstractPotentialBase
+            The potential of the host galaxy.
+        x : Array
+            3d position (x, y, z) in [kpc]
+        v : Array
+            3d velocity (v_x, v_y, v_z) in [kpc/Myr]
+        prog_mass : Numeric
+            Mass of the progenitor in [Msol]
+        t : Numeric
+            Time in [Myr]
+
+        i : int
+            PRNG multiplier
+        seed_num : int
+            PRNG seed
+
+        Returns
+        -------
+        x_lead, x_trail, v_lead, v_trail : Array
+            Positions and velocities of the leading and trailing tails.
+        """
+        return self._sample(potential, x, v, prog_mass, i, t, seed_num=seed_num)
+
+    @abc.abstractmethod
+    def _sample(
+        self,
+        potential: AbstractPotentialBase,
+        x: jt.Array,
+        v: jt.Array,
+        prog_mass: jt.Numeric,
+        i: int,
+        t: jt.Numeric,
+        *,
+        seed_num: int,
+    ) -> tuple[jt.Array, jt.Array, jt.Array, jt.Array]:
+        pass
 
 
 # ==========================================================================
@@ -46,7 +91,7 @@ class BaseStreamDF(eqx.Module):  # type: ignore[misc]
 
 class FardalStreamDF(BaseStreamDF):
     @partial_jit(static_argnames=("seed_num",))
-    def sample(
+    def _sample(
         self,
         potential: AbstractPotentialBase,
         x: jt.Array,
