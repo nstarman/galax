@@ -5,7 +5,7 @@ from __future__ import annotations
 
 __all__ = ["MockStreamGenerator"]
 
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 import equinox as eqx
 import jax
@@ -34,68 +34,19 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
     # ==========================================================================
 
     @partial_jit(static_argnames=("seed_num",))
-    def _sample_ics_along_progenitor_orbit(
-        self, ts: jt.Array, prog_ws: jt.Array, prog_mass: jt.Numeric, *, seed_num: int
-    ) -> jt.Array:
-        """Stream Initial Conditions.
-
-        TODO: this function should be refactored to be part of the DF class.
-        Right now that is a scalar over the position and time.
-
-        Parameters
-        ----------
-        ts : Array
-            Array of times to release particles.
-        prog_ws : Array
-            x, v of the progenitor at times `ts`.
-        prog_mass : Array
-            Mass of the progenitor.
-
-        Returns
-        -------
-        x_lead, x_trail, v_lead, v_trail : Array
-        """
-
-        def scan_fn(carry: _carryT, t: Any) -> tuple[_carryT, _wifT]:
-            i = carry[0]
-            output = self.df.sample(
-                self.potential,
-                prog_ws[i, :3],
-                prog_ws[i, 3:],
-                prog_mass,
-                i,
-                t,
-                seed_num=seed_num,
-            )
-            return (i + 1, *output), tuple(output)  # type: ignore[return-value]
-
-        init_carry = (
-            0,
-            xp.array([0.0, 0.0, 0.0]),
-            xp.array([0.0, 0.0, 0.0]),
-            xp.array([0.0, 0.0, 0.0]),
-            xp.array([0.0, 0.0, 0.0]),
-        )
-        return jax.lax.scan(scan_fn, init_carry, ts[1:])[1]
-
-    @partial_jit(static_argnames=("seed_num",))
     def _run_scan(
         self, ts: jt.Array, prog_w0: jt.Array, prog_mass: jt.Array, *, seed_num: int
     ) -> tuple[tuple[jt.Array, jt.Array], jt.Array]:
-        """
-        Generate stellar stream by scanning over the release model/integration. Better for CPU usage.
+        """Generate stellar stream by scanning over the release model/integration.
+
+        Better for CPU usage.
         """
         # Integrate the progenitor orbit
         prog_ws = self.potential.integrate_orbit(prog_w0, xp.min(ts), xp.max(ts), ts)
 
         # Generate stream initial conditions along the integrated progenitor orbit
-        (
-            x_lead,
-            x_trail,
-            v_lead,
-            v_trail,
-        ) = self._sample_ics_along_progenitor_orbit(
-            ts, prog_ws, prog_mass, seed_num=seed_num
+        x_lead, x_trail, v_lead, v_trail = self.df.sample(
+            self.potential, prog_ws, ts, prog_mass, seed_num=seed_num
         )
 
         def scan_fn(
@@ -137,13 +88,8 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
         prog_ws = self.potential.integrate_orbit(prog_w0, xp.min(ts), xp.max(ts), ts)
 
         # Generate stream initial conditions along the integrated progenitor orbit
-        (
-            x_lead,
-            x_trail,
-            v_lead,
-            v_trail,
-        ) = self._sample_ics_along_progenitor_orbit(
-            ts, prog_w0, prog_mass, seed_num=seed_num
+        x_lead, x_trail, v_lead, v_trail = self.df.sample(
+            self.potential, prog_ws, ts, prog_mass, seed_num=seed_num
         )
 
         # TODO: make this a separated method

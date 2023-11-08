@@ -6,7 +6,7 @@ from __future__ import annotations
 __all__ = ["BaseStreamDF", "FardalStreamDF"]
 
 import abc
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import equinox as eqx
 import jax
@@ -33,6 +33,65 @@ class BaseStreamDF(eqx.Module):  # type: ignore[misc]
     @partial_jit(static_argnames=("seed_num",))
     def sample(
         self,
+        # <\ parts of gala's ``prog_orbit``
+        potential: AbstractPotentialBase,
+        prog_ws: jt.Array,
+        ts: jt.Numeric,
+        # />
+        prog_mass: jt.Numeric,
+        *,
+        seed_num: int,
+    ) -> tuple[jt.Array, jt.Array, jt.Array, jt.Array]:
+        """Generate stream particle initial conditions.
+
+        Parameters
+        ----------
+        potential : AbstractPotentialBase
+            The potential of the host galaxy.
+        prog_ws : Array[(N, 6), float]
+            Columns are (x, y, z) [kpc], (v_x, v_y, v_z) [kpc/Myr]
+            Rows are at times `ts`.
+        prog_mass : Numeric
+            Mass of the progenitor in [Msol].
+            TODO: allow this to be an array or function of time.
+        ts : Numeric
+            Times in [Myr]
+
+        seed_num : int, keyword-only
+            PRNG seed
+
+        Returns
+        -------
+        x_lead, x_trail, v_lead, v_trail : Array
+            Positions and velocities of the leading and trailing tails.
+        """
+
+        def scan_fn(carry: _carryT, t: Any) -> tuple[_carryT, _wifT]:
+            i = carry[0]
+            output = self._sample(
+                potential,
+                prog_ws[i, :3],
+                prog_ws[i, 3:],
+                prog_mass,
+                i,
+                t,
+                seed_num=seed_num,
+            )
+            return (i + 1, *output), tuple(output)  # type: ignore[return-value]
+
+        init_carry = (
+            0,
+            xp.array([0.0, 0.0, 0.0]),
+            xp.array([0.0, 0.0, 0.0]),
+            xp.array([0.0, 0.0, 0.0]),
+            xp.array([0.0, 0.0, 0.0]),
+        )
+        x_lead, x_trail, v_lead, v_trail = jax.lax.scan(scan_fn, init_carry, ts[1:])[1]
+        return x_lead, x_trail, v_lead, v_trail
+
+    @abc.abstractmethod
+    def _sample(
+        self,
         potential: AbstractPotentialBase,
         x: jt.Array,
         v: jt.Array,
@@ -43,8 +102,6 @@ class BaseStreamDF(eqx.Module):  # type: ignore[misc]
         seed_num: int,
     ) -> tuple[jt.Array, jt.Array, jt.Array, jt.Array]:
         """Generate stream particle initial conditions.
-
-        TODO: make this work over a batch of positions/times/masses.
 
         Parameters
         ----------
@@ -69,21 +126,7 @@ class BaseStreamDF(eqx.Module):  # type: ignore[misc]
         x_lead, x_trail, v_lead, v_trail : Array
             Positions and velocities of the leading and trailing tails.
         """
-        return self._sample(potential, x, v, prog_mass, i, t, seed_num=seed_num)
-
-    @abc.abstractmethod
-    def _sample(
-        self,
-        potential: AbstractPotentialBase,
-        x: jt.Array,
-        v: jt.Array,
-        prog_mass: jt.Numeric,
-        i: int,
-        t: jt.Numeric,
-        *,
-        seed_num: int,
-    ) -> tuple[jt.Array, jt.Array, jt.Array, jt.Array]:
-        pass
+        ...
 
 
 # ==========================================================================
@@ -93,6 +136,7 @@ class FardalStreamDF(BaseStreamDF):
     @partial_jit(static_argnames=("seed_num",))
     def _sample(
         self,
+        # parts of gala's ``prog_orbit``
         potential: AbstractPotentialBase,
         x: jt.Array,
         v: jt.Array,
