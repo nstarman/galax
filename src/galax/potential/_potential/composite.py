@@ -14,7 +14,7 @@ from galax.typing import (
     BatchFloatScalar,
     BatchVec3,
 )
-from galax.units import UnitSystem
+from galax.units import AbstractUnitSystem
 from galax.utils import ImmutableDict, partial_jit
 from galax.utils._misc import first
 
@@ -31,7 +31,9 @@ class CompositePotential(ImmutableDict[AbstractPotentialBase], AbstractPotential
 
     _data: dict[str, AbstractPotentialBase]
     _: KW_ONLY
-    units: UnitSystem = eqx.field(init=False, static=True, converter=converter_to_usys)
+    units: AbstractUnitSystem = eqx.field(
+        init=False, static=True, converter=converter_to_usys
+    )
     _G: float = eqx.field(init=False, static=True, repr=False, converter=float)
 
     def __init__(

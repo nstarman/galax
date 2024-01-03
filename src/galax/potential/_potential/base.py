@@ -25,7 +25,7 @@ from galax.typing import (
     Vec3,
     Vec6,
 )
-from galax.units import UnitSystem, dimensionless
+from galax.units import AbstractUnitSystem, dimensionless
 from galax.utils import partial_jit, vectorize_method
 from galax.utils._shape import batched_shape, expand_arr_dims, expand_batch_dims
 from galax.utils.dataclasses import ModuleMeta
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 class AbstractPotentialBase(eqx.Module, metaclass=ModuleMeta):  # type: ignore[misc]
     """Potential Class."""
 
-    units: eqx.AbstractVar[UnitSystem]
+    units: eqx.AbstractVar[AbstractUnitSystem]
 
     ###########################################################################
     # Abstract methods that must be implemented by subclasses
