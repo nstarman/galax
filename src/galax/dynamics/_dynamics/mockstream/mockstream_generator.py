@@ -15,7 +15,9 @@ from jax.lib.xla_bridge import get_backend
 import quaxed.array_api as xp
 from unxt import AbstractUnitSystem, Quantity
 
+import galax.potential as gp
 import galax.typing as gt
+from ._moving import TimeDependentSpatialTranslationOperator
 from .core import MockStream
 from .df import AbstractStreamDF, ProgenitorMassCallable
 from .utils import cond_reverse, interleave_concat
@@ -23,7 +25,6 @@ from galax.coordinates import PhaseSpacePosition
 from galax.dynamics._dynamics.integrate._api import Integrator
 from galax.dynamics._dynamics.integrate._builtin import DiffraxIntegrator
 from galax.dynamics._dynamics.integrate._funcs import evaluate_orbit
-from galax.potential._potential.base import AbstractPotentialBase
 
 Carry: TypeAlias = tuple[gt.IntScalar, gt.VecN, gt.VecN]
 
@@ -38,8 +39,22 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
     E.g. ``galax.dynamics.mockstream.FardalStreamDF``.
     """
 
-    potential: AbstractPotentialBase
+    potential: gp.AbstractPotentialBase
     """Potential in which the progenitor orbits and creates a stream."""
+
+    progenitor_potential: gp.AbstractPotentialBase = eqx.field(
+        default=None,
+        converter=lambda x: x
+        if x is not None
+        else gp.NullPotential(units="dimensionless"),
+    )
+    """The potential of the progenitor system.
+
+    If specified, the self-gravity of the progenitor system is included in the
+    force calculation and orbit integration. If not specified, self-gravity is
+    not accounted for. The default is `None`, which is converted to the
+    `galax.potential.NullPotential`.
+    """
 
     _: KW_ONLY
     progenitor_integrator: Integrator = eqx.field(
@@ -59,7 +74,11 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
 
     @partial(jax.jit)
     def _run_scan(  # TODO: output shape depends on the input shape
-        self, ts: gt.QVecTime, mock0_lead: MockStream, mock0_trail: MockStream
+        self,
+        potential: gp.AbstractPotentialBase,
+        ts: gt.QVecTime,
+        mock0_lead: MockStream,
+        mock0_trail: MockStream,
     ) -> tuple[gt.BatchVec6, gt.BatchVec6]:
         """Generate stellar stream by scanning over the release model/integration.
 
@@ -85,9 +104,8 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
             tstep = xp.asarray([ts[i], t_f])
 
             def integ_ics(ics: gt.Vec6) -> gt.VecN:
-                # TODO: only return the final state
                 return evaluate_orbit(
-                    self.potential, ics, tstep, integrator=self.stream_integrator
+                    potential, ics, tstep, integrator=self.stream_integrator
                 ).w(units=self.units)[-1]
 
             # vmap integration over leading and trailing arm
@@ -105,7 +123,11 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
 
     @partial(jax.jit)
     def _run_vmap(  # TODO: output shape depends on the input shape
-        self, ts: gt.QVecTime, mock0_lead: MockStream, mock0_trail: MockStream
+        self,
+        potential: gp.AbstractPotentialBase,
+        ts: gt.QVecTime,
+        mock0_lead: MockStream,
+        mock0_trail: MockStream,
     ) -> tuple[gt.BatchVec6, gt.BatchVec6]:
         """Generate stellar stream by vmapping over the release model/integration.
 
@@ -119,11 +141,11 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
         ) -> tuple[gt.Vec6, gt.Vec6]:
             tstep = xp.asarray([ts[i], t_f])
             w_lead = evaluate_orbit(
-                self.potential, w0_l_i, tstep, integrator=self.stream_integrator
-            ).w(units=self.potential.units)[-1]
+                potential, w0_l_i, tstep, integrator=self.stream_integrator
+            ).w(units=potential.units)[-1]
             w_trail = evaluate_orbit(
-                self.potential, w0_t_i, tstep, integrator=self.stream_integrator
-            ).w(units=self.potential.units)[-1]
+                potential, w0_t_i, tstep, integrator=self.stream_integrator
+            ).w(units=potential.units)[-1]
             return w_lead, w_trail
 
         w0_lead = mock0_lead.w(units=self.units)
@@ -164,7 +186,7 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
 
         Returns
         -------
-        mockstream : :class:`galax.dynamcis.MockStream`
+        mockstream : :class:`galax.dynamics.MockStream`
             Leading and/or trailing arms of the mock stream.
         prog_o : :class:`galax.coordinates.PhaseSpacePosition`
             The final phase-space(+time) position of the progenitor.
@@ -191,18 +213,37 @@ class MockStreamGenerator(eqx.Module):  # type: ignore[misc]
         ts = cond_reverse(ts[1] < ts[0], ts)
 
         # Integrate the progenitor orbit, evaluating at the stripping times
+        interpolated = not isinstance(self.progenitor_potential, gp.NullPotential)
         prog_o = evaluate_orbit(
-            self.potential, w0, ts, integrator=self.progenitor_integrator
+            self.potential,
+            w0,
+            ts,
+            integrator=self.progenitor_integrator,
+            interpolated=interpolated,
         )
+
+        # Add the progenitor potential to the external potential
+        if interpolated:
+            progenitor_pot = gp.PotentialFrame(
+                potential=self.progenitor_potential,
+                operator=TimeDependentSpatialTranslationOperator.constructor(
+                    prog_o.interpolant
+                ),
+            )
+            pot = gp.CompositePotential(
+                external=self.potential, progenitor=progenitor_pot
+            )
+        else:
+            pot = self.potential
 
         # Generate initial conditions from the DF, along the integrated
         # progenitor orbit. The release times are the stripping times.
-        mock0_lead, mock0_trail = self.df.sample(rng, self.potential, prog_o, prog_mass)
+        mock0_lead, mock0_trail = self.df.sample(rng, pot, prog_o, prog_mass)
 
         if use_vmap:
-            lead_arm_w, trail_arm_w = self._run_vmap(ts, mock0_lead, mock0_trail)
+            lead_arm_w, trail_arm_w = self._run_vmap(pot, ts, mock0_lead, mock0_trail)
         else:
-            lead_arm_w, trail_arm_w = self._run_scan(ts, mock0_lead, mock0_trail)
+            lead_arm_w, trail_arm_w = self._run_scan(pot, ts, mock0_lead, mock0_trail)
 
         t = xp.ones_like(ts) * ts.value[-1]  # TODO: ensure this time is correct
 
