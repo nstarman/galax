@@ -198,32 +198,26 @@ def evaluate_orbit(
     integrator = replace(integrator) if integrator is not None else _default_integrator
 
     # parse t -> potential units
-    t = jnp.atleast_1d(Quantity.from_(t, units["time"]))
+    t = Quantity.from_(t, units["time"])
+    ts = jnp.atleast_1d(t)
 
     # Parse w0
-    psp0t = w0.t if isinstance(w0, gc.PhaseSpacePosition) and w0.t is not None else t[0]
+    w0t = w0.t if isinstance(w0, gc.PhaseSpacePosition) and w0.t is not None else ts[0]
 
     # -------------
 
-    # Initial integration `w0.t` to `t[0]`.
+    # Initial integration `w0.t` to `ts[0]`.
     # TODO: get diffrax's `solver_state` to speed the second integration.
     # TODO: get diffrax's `controller_state` to speed the second integration.
-    qp0 = integrator(
-        pot._dynamics_deriv,  # noqa: SLF001
-        w0,  # w0
-        psp0t,  # t0
-        jnp.full_like(psp0t, t[0]),  # t1
-        units=units,
-        interpolated=False,
-    )
+    qp0 = integrator(pot._dynamics_deriv, w0, w0t, ts[0], units=units)  # noqa: SLF001
 
-    # Orbit integration `t[0]` to `t[-1]`
+    # Orbit integration `t0` to `t[-1]`
     ws = integrator(
         pot._dynamics_deriv,  # noqa: SLF001
         qp0,
-        t[0],
-        t[-1],
-        saveat=t,
+        ts[0],
+        ts[-1],
+        saveat=ts,
         units=units,
         interpolated=interpolated,
     )
