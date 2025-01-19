@@ -24,11 +24,7 @@ class TestLM10Potential(AbstractCompositePotential_Test):
         self, pot_cls: type[gp.LM10Potential]
     ) -> dict[str, dict[str, u.Quantity]]:
         """Composite potential."""
-        return {
-            "disk": pot_cls._default_disk,
-            "bulge": pot_cls._default_bulge,
-            "halo": pot_cls._default_halo,
-        }
+        return {"disk": pot_cls.disk, "bulge": pot_cls.bulge, "halo": pot_cls.halo}
 
     # ==========================================================================
 

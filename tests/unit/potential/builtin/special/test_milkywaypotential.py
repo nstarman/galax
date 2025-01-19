@@ -28,10 +28,10 @@ class TestMilkyWayPotential(AbstractCompositePotential_Test):
     ) -> dict[str, dict[str, u.Quantity]]:
         """Composite potential."""
         return {
-            "disk": pot_cls._default_disk,
-            "halo": pot_cls._default_halo,
-            "bulge": pot_cls._default_bulge,
-            "nucleus": pot_cls._default_nucleus,
+            "disk": pot_cls.disk,
+            "halo": pot_cls.halo,
+            "bulge": pot_cls.bulge,
+            "nucleus": pot_cls.nucleus,
         }
 
     @pytest.fixture(scope="class")
