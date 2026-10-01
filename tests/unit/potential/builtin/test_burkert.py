@@ -1,6 +1,7 @@
 from typing import Any, ClassVar
 
 import pytest
+from optional_deps import OptDeps
 from packaging.version import Version
 
 import quaxed.numpy as jnp
@@ -10,7 +11,6 @@ import galax.potential as gp
 import galax.potential.custom_types as gt
 from ..test_core import AbstractSinglePotential_Test
 from .test_common import ParameterMMixin, ParameterRSMixin
-from galax.interop.gala.optional_deps import OptDeps
 
 
 class TestBurkertPotential(
