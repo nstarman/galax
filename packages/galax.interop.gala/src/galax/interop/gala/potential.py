@@ -23,7 +23,7 @@ import unxt as u
 
 import galax.potential as gp
 import galax.potential.io as gpio
-from galax.interop.gala.optional_deps import OptDeps
+from galax.interop.gala.optional_deps import GALA_VERSION
 
 ##############################################################################
 # Hook into general dispatcher
@@ -260,7 +260,7 @@ def galax_to_gala(pot: gp.CompositePotential, /) -> galap.CompositePotential:
 # Builtin potentials
 
 
-if OptDeps.GALA.installed and (Version("1.8.2") <= OptDeps.GALA):
+if Version("1.8.2") <= GALA_VERSION:
 
     @dispatch
     def gala_to_galax(
@@ -277,8 +277,8 @@ if OptDeps.GALA.installed and (Version("1.8.2") <= OptDeps.GALA):
         .. invisible-code-block: python
 
             from packaging.version import Version
-            from galax.interop.gala.optional_deps import OptDeps
-            skip = not OptDeps.GALA.installed or OptDeps.GALA < Version("1.8.2")
+            from galax.interop.gala.optional_deps import GALA_VERSION
+            skip = GALA_VERSION < Version("1.8.2")
 
         .. skip: start if(skip, reason="Requires Gala v1.8.2+")
 
@@ -312,8 +312,8 @@ if OptDeps.GALA.installed and (Version("1.8.2") <= OptDeps.GALA):
         .. invisible-code-block: python
 
             from packaging.version import Version
-            from galax.interop.gala.optional_deps import OptDeps
-            skip = not OptDeps.GALA.installed or OptDeps.GALA < Version("1.8.2")
+            from galax.interop.gala.optional_deps import GALA_VERSION
+            skip = GALA_VERSION < Version("1.8.2")
 
         .. skip: start if(skip, reason="Requires Gala v1.8.2+")
 
@@ -1730,7 +1730,7 @@ def galax_to_gala(pot: gp.MilkyWayPotential, /) -> galap.MilkyWayPotential:
     }
     # gala>=1.11 merges MilkyWayPotential{,2022} behind a `version` argument. Without
     # it gala warns and, in a future release, will default to the 2022 model.
-    if OptDeps.GALA.installed and Version("1.11") <= OptDeps.GALA:
+    if Version("1.11") <= GALA_VERSION:
         kwargs["version"] = "v1"
 
     return galap.MilkyWayPotential(**kwargs)
