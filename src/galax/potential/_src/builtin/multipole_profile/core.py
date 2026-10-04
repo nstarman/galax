@@ -253,6 +253,23 @@ def _check_build_times(t: Float[Array, "..."], /) -> bool:
             f"{t.shape[0]}); pass a scalar for a single-time expansion"
         )
         raise ValueError(msg)
+    # Strictly increasing, for the same reason the shape is checked: silence.
+    # `TimeInterpolatedParameter` brackets a query with `jnp.searchsorted`,
+    # which assumes a sorted grid and does not say otherwise -- an unsorted
+    # one returns an index for some other interval, so the build succeeds and
+    # every interpolated value is quietly wrong. `interpax` sorts internally
+    # when fitting the knot derivatives, so even those look reasonable.
+    #
+    # Checked here rather than in `from_values`: this sees the concrete
+    # build-time `t`, while that constructor may be traced, where comparing
+    # values raises instead of validating.
+    if t.ndim == 1 and not bool(jnp.all(jnp.diff(t) > 0)):
+        msg = (
+            "t must be strictly increasing; the expansion is interpolated "
+            "against it with a sorted-grid search, so an out-of-order grid "
+            "returns wrong values rather than failing"
+        )
+        raise ValueError(msg)
     return bool(t.ndim == 1)
 
 

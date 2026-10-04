@@ -812,14 +812,27 @@ def test_time_grid_clamps_outside_the_grid() -> None:
     [
         (jnp.zeros((2, 2)), "must be a scalar or 1-D"),
         (jnp.asarray([1.0]), "at least 2 entries"),
+        (jnp.asarray([0.0, 200.0, 100.0, 300.0]), "strictly increasing"),
+        (jnp.asarray([0.0, 100.0, 100.0, 300.0]), "strictly increasing"),
     ],
 )
 def test_time_grid_rejects_a_malformed_time(t, match: str) -> None:
-    """A 2-D ``t`` has no meaning, and one time cannot be interpolated.
+    """A malformed time grid must be refused rather than quietly misused.
 
-    Both have to be caught here: `harmonic_coeffs` broadcasts ``t`` against
-    the angular grid, so a bad ``t`` reaching the build would silently
-    average the expansion over those times instead of failing.
+    All of these have to be caught here, because none of them fails on its
+    own. `harmonic_coeffs` broadcasts ``t`` against the angular grid, so a
+    2-D one would silently *average* the expansion over those times. And an
+    out-of-order grid builds perfectly well, then interpolates against a
+    `jnp.searchsorted` that assumes sortedness -- it brackets the query with
+    some other interval and returns wrong values with no complaint.
+    `interpax` even sorts internally when fitting the knot derivatives, so
+    those look right too.
+
+    Verified the hazard is real before guarding it: on a scrambled grid with
+    arbitrary values, `eval_log_spline` disagrees with the sorted answer in
+    every query tried. A smooth test function hides it -- the first attempt
+    used ``1/(1 + 0.01 t)`` and the two index paths happened to land on
+    numerically coincident cubics, agreeing to the last digit.
     """
     with pytest.raises(ValueError, match=match):
         gp.MultipoleProfilePotential.from_density(
