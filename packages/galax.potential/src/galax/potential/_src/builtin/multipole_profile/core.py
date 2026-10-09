@@ -577,7 +577,9 @@ class MultipoleProfilePotential(AbstractMultipoleProfilePotential):
         ------
         ValueError
             If ``n_r < 4``, ``l_max < 0``, ``n_theta`` or ``n_phi`` is given and
-            is ``< 1``, ``r_min <= 0``, or ``r_min >= r_max``.
+            is ``< 1``, ``r_min <= 0``, or ``r_min >= r_max``; or if ``t`` is
+            more than 1-D, or is a 1-D grid with fewer than two entries or one
+            that is not strictly increasing and finite.
         """
         _check_grid_config(n_r, l_max)
 
@@ -741,9 +743,12 @@ class MultipoleProfilePotential(AbstractMultipoleProfilePotential):
         Raises
         ------
         ValueError
-            If ``pot`` is time-dependent, ``n_r < 4``, ``l_max < 0``, ``n_theta``
-            or ``n_phi`` is given and is ``< 1``, ``r_min <= 0``, or
-            ``r_min >= r_max``.
+            If ``pot`` is time-dependent *and* ``t`` is a single time -- a
+            lone expansion cannot track a varying source, while a 1-D ``t``
+            is precisely how one is tracked, so a grid is accepted. Also if
+            ``n_r < 4``, ``l_max < 0``, ``n_theta`` or ``n_phi`` is given and
+            is ``< 1``, ``r_min <= 0``, ``r_min >= r_max``, or ``t`` is
+            rejected by `from_density`.
         """
         # Only a single-time build cannot track a varying source; a time grid
         # is precisely how one is tracked, so the check is conditional on it.
