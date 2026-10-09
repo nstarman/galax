@@ -120,8 +120,12 @@ class CustomParameter(AbstractParameter):
     func : Callable[[BBtRealQuSz0], Array[float, (*shape,)]]
         The function to use to compute the parameter value.
     args : tuple
-        Extra arguments passed to ``func`` after ``t``. Put any *data* the
-        function needs here rather than closing over it -- see below.
+        Extra positional arguments passed to ``func`` after ``t``. Put any
+        *data* the function needs here rather than closing over it -- see
+        below.
+    kwargs : dict
+        The same, by name. Use it once positional stops reading clearly.
+        Keywords given at the call site override these.
 
     Examples
     --------
@@ -146,6 +150,19 @@ class CustomParameter(AbstractParameter):
     >>> up(u.Q(2.0, "Gyr"))
     Q(2.e+09, 'solMass')
 
+    By name, and overridable at the call site:
+
+    >>> def ramp(t, *, m0, rate):
+    ...     return m0 + rate * u.ustrip("Gyr", t)
+
+    >>> up = CustomParameter(func=ramp,
+    ...                      kwargs={"m0": u.Q(1e9, "Msun"), "rate": u.Q(1e9, "Msun")})
+    >>> up(u.Q(2.0, "Gyr"))
+    Q(3.e+09, 'solMass')
+
+    >>> up(u.Q(2.0, "Gyr"), rate=u.Q(0.0, "Msun"))
+    Q(1.e+09, 'solMass')
+
     ``func`` is a *static* field -- it is hashed, not traced -- so arrays
     captured in a closure are invisible to JAX. They are not pytree leaves,
     which costs two things that are easy to miss. A closure is hashed by
@@ -162,10 +179,15 @@ class CustomParameter(AbstractParameter):
     # which is what a *parameter* must look like and is unchanged.
     func: Callable[..., Any] = eqx.field(static=True)
     args: tuple[Any, ...] = eqx.field(default=())
+    kwargs: dict[str, Any] = eqx.field(default_factory=dict)
 
     @ft.partial(jax.jit, static_argnames=("ustrip",))
     def __call__(
         self, t: gt.BBtQuSz0, *, ustrip: u.AbstractUnit | None = None, **kwargs: Any
     ) -> gt.QuSzAny | gt.SzAny:
-        out = self.func(t, *self.args, **kwargs)
+        # Call-site keywords win over stored ones, which is what makes the
+        # stored ones defaults rather than a second, invisible call site.
+        # `ustrip` never reaches `func`: it is this class's own argument, so
+        # storing it under that name has no effect.
+        out = self.func(t, *self.args, **{**self.kwargs, **kwargs})
         return out if ustrip is None else u.ustrip(AllowValue, ustrip, out)
