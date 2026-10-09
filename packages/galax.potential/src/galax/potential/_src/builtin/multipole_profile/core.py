@@ -260,9 +260,9 @@ def _check_build_times(t: Float[Array, "..."], /) -> bool:
     # every interpolated value is quietly wrong. `interpax` sorts internally
     # when fitting the knot derivatives, so even those look reasonable.
     #
-    # Checked here rather than in `from_values`: this sees the concrete
-    # build-time `t`, while that constructor may be traced, where comparing
-    # values raises instead of validating.
+    # Checked here rather than in `time_interpolated_parameter`: this sees
+    # the concrete build-time `t`, while that factory may be traced, where
+    # comparing values raises instead of validating.
     if t.ndim == 1 and not bool(jnp.all(jnp.diff(t) > 0)):
         msg = (
             "t must be strictly increasing; the expansion is interpolated "
