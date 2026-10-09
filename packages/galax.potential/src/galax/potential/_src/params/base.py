@@ -18,12 +18,7 @@ class ParameterCallable(Protocol):
     """Protocol for a Parameter callable."""
 
     def __call__(
-        self,
-        t: gt.BBtQuSz0,
-        /,
-        *args: Any,
-        ustrip: u.AbstractUnit | None = None,
-        **kwargs: Any,
+        self, t: gt.BBtQuSz0, *, ustrip: u.AbstractUnit | None = None, **kwargs: Any
     ) -> gt.QuSzAny | gt.SzAny:
         """Compute the parameter value at the given time(s).
 
@@ -31,10 +26,6 @@ class ParameterCallable(Protocol):
         ----------
         t : `~galax.typing.BBtQuSz0`
             Time(s) at which to compute the parameter value.
-        *args : Any
-            Any data the function needs. `CustomParameter` passes its
-            ``args`` field here, which is how a table reaches the function
-            as pytree leaves rather than captured in a closure.
         ustrip : Unit | None
             Unit to strip from the parameter value.
             If None, the parameter value is returned with its original unit.
