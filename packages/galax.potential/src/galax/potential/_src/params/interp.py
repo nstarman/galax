@@ -39,7 +39,17 @@ def _interpolate(
     tval = u.ustrip(AllowValue, ts.unit, t)
     grid = ts.value
     # Clamp rather than continue the edge cubic; see the factory's docstring.
-    tq = jnp.clip(jnp.asarray(tval), grid[0], grid[-1])
+    #
+    # `where` rather than `clip`, for the derivative at the knots. JAX gives
+    # `clip` the subgradient 0.5 at a tie, so `jax.grad` at `ts[0]` or
+    # `ts[-1]` came back exactly *half* the interior slope -- and `t = 0` is
+    # galax's default time, so a grid starting at 0 makes that boundary an
+    # ordinary query, not an exotic one. Written this way the endpoints take
+    # the interior branch and get the interior derivative, which is the
+    # useful convention: the clamp guards extrapolation, it is not a claim
+    # that the parameter goes flat at its last knot. Values are identical.
+    tval = jnp.asarray(tval)
+    tq = jnp.where(tval < grid[0], grid[0], jnp.where(tval > grid[-1], grid[-1], tval))
     return u.Q(eval_log_spline(grid, values.value, derivs.value, tq), values.unit)
 
 

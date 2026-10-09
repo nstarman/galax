@@ -180,3 +180,36 @@ def test_the_factory_still_accepts_a_sorted_grid() -> None:
         u.Q(jnp.asarray([1.0, 2.0, 3.0]), "Msun"),
     )
     assert jnp.allclose(u.ustrip(u.unit("Msun"), p(u.Q(0.5, "Gyr"))), 1.5)
+
+
+def test_the_gradient_at_a_boundary_knot_is_the_interior_slope() -> None:
+    """``jax.grad`` at ``ts[0]`` / ``ts[-1]`` must not be half the slope.
+
+    REGRESSION: the clamp was `jnp.clip`, and JAX gives `clip` the
+    subgradient 0.5 at a tie, so differentiating at either end knot returned
+    exactly *half* the interior slope. Values were never affected -- this is
+    gradients with respect to time only.
+
+    It is not an exotic query: ``t = 0`` is galax's default time and grids
+    routinely start there, so the first knot is a boundary a caller lands on
+    by default rather than by accident.
+
+    Written with `jnp.where`, the endpoints take the interior branch and get
+    the interior derivative. That is the useful convention: the clamp exists
+    to stop extrapolation, not to claim the parameter goes flat at its last
+    knot. Outside the range the gradient is 0, which *is* that claim and is
+    correct there.
+    """
+    ts = u.Q(jnp.asarray([0.0, 1.0, 2.0]), "Gyr")
+    slope = 1e12  # Msun per Gyr, exactly linear so the slope is unambiguous
+    values = u.Q(1e12 + slope * u.ustrip(u.unit("Gyr"), ts), "Msun")
+    p = time_interpolated_parameter(ts, values)
+
+    grad = jax.grad(lambda x: u.ustrip(u.unit("Msun"), p(u.Q(x, "Gyr"))))
+
+    for t_edge in (0.0, 2.0):
+        assert float(grad(t_edge)) == pytest.approx(slope, rel=1e-10), t_edge
+    assert float(grad(0.5)) == pytest.approx(slope, rel=1e-10)
+    # Outside, the value is clamped and the gradient is genuinely zero.
+    assert float(grad(-1.0)) == 0.0
+    assert float(grad(3.0)) == 0.0
