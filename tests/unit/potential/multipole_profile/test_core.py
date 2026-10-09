@@ -10,7 +10,7 @@ import unxt as u
 
 import galax.potential as gp
 import galax.potential.params as gpp
-from galax.potential import Symmetry
+from galax.potential import CompositePotential, HernquistPotential, Symmetry
 from galax.potential._src.base import default_constants
 from galax.potential._src.builtin.multipole_profile.build import build_expansion
 from galax.potential._src.builtin.multipole_profile.core import (
@@ -20,6 +20,12 @@ from galax.potential._src.builtin.multipole_profile.core import (
 from galax.potential._src.harmonic import default_angular_resolution, lm_keys
 from galax.potential._src.params.interp import _interpolate
 from galax.potential._src.utils import safe_vector_norm
+
+XFAIL_T = (
+    "batched `t` on a grid build: the expansion's hardcoded `axis=1` concat "
+    "cannot take the time axis the interpolated coefficients gain"
+)
+"""Why `potential`/`density` are expected to fail on a batched `t`."""
 
 G_GALACTIC = float(default_constants["G"].decompose(u.unitsystem("galactic")).value)
 """G in kpc^3 / (Msun Myr^2), from the same constant the potentials use.
@@ -1001,25 +1007,41 @@ def test_refining_the_time_grid_converges_on_a_direct_build() -> None:
     assert errs[2] < errs[1] / 5.0, errs
 
 
-@pytest.mark.parametrize("method", ["potential", "density", "gradient"])
+@pytest.mark.parametrize(
+    "method",
+    [
+        "gradient",
+        pytest.param("potential", marks=pytest.mark.xfail(strict=True, reason=XFAIL_T)),
+        pytest.param("density", marks=pytest.mark.xfail(strict=True, reason=XFAIL_T)),
+    ],
+)
 def test_a_time_grid_build_evaluates_at_a_batch_of_times(method: str) -> None:
-    """A batched ``t`` must work, and agree with evaluating one at a time.
+    """Batched ``t`` works for `gradient` and is a known gap for the others.
 
-    REGRESSION: `_gradient` carried `vectorize_method`, so its body always saw
-    a scalar ``t``; `_potential` and `_density` did not. On a grid build the
-    coefficients are time-interpolated, so a batched ``t`` gave them a leading
-    time axis, which the expansion's positional ``axis=1`` concat and its
-    broadcasts are not written for -- a bare ``TypeError: Cannot concatenate
-    arrays ...`` naming no galax concept.
+    `_gradient` carries `vectorize_method`, so its body always sees a scalar
+    ``t`` and a grid build evaluates fine. `_potential` and `_density` do
+    not: a batched ``t`` reaches `_params`, whose coefficients are
+    time-interpolated on a grid and so gain a leading time axis, which the
+    expansion's positional ``axis=1`` concat and its broadcasts are not
+    written for.
 
-    It matters because batched ``t`` is how energies are taken along an orbit:
-    ``potential_energy(pot, orbit)`` and ``total_energy(pot, orbit)`` both
-    failed on exactly the potentials this feature exists to build, while a
-    constant-parameter potential was fine. Nothing caught it because every
-    other test here evaluates at a scalar ``t``.
+    It matters because a batch of times is how energies are taken along an
+    orbit, so `potential_energy(pot, orbit)` does not yet work on a
+    grid-built potential. `jax.vmap` over ``t`` is the workaround.
 
-    Asserted against a per-element loop rather than a closed form, so it pins
-    the batching itself: the two agree to the bit.
+    Giving the two methods the decorator was tried and reverted: it fixes
+    this, but `vectorize_method` broadcasts the *loop* dims of ``xyz`` and
+    ``t``, which no other galax potential does, so a **constant**-parameter
+    multipole started reporting shapes no other potential reports -- and
+    `AbstractCompositePotential._potential` stacks its components rather
+    than broadcasting them, so any composite containing one raised
+    ``TypeError: Cannot concatenate arrays with different numbers of
+    dimensions``. Breaking every composite to extend a new feature is the
+    wrong trade; the fix belongs in the expansion's hardcoded axes, not in
+    the evaluation path's shape contract.
+
+    ``strict=True`` so that fixing it is noticed here rather than silently
+    widening the contract.
     """
 
     def rho(xyz, t):
@@ -1046,3 +1068,54 @@ def test_a_time_grid_build_evaluates_at_a_batch_of_times(method: str) -> None:
         [u.ustrip(got.unit, getattr(pot, method)(xyz[i], ts[i])) for i in range(3)]
     )
     assert jnp.array_equal(u.ustrip(got.unit, got), want)
+
+
+def test_a_constant_multipole_keeps_every_other_potential_s_shapes() -> None:
+    """Shapes must match the rest of the library, composites included.
+
+    REGRESSION: `vectorize_method` was added to `_potential` and `_density`
+    to make a *grid* build accept a batched ``t``. It did, but the decorator
+    broadcasts the *loop* dims of ``xyz`` and ``t``, which no other galax
+    potential's `_potential` does -- so a **constant**-parameter multipole,
+    a path this feature does not touch at all, started answering ``(7,)``
+    where `HernquistPotential` answers ``()``.
+
+    `AbstractCompositePotential._potential` stacks its components rather
+    than broadcasting them, so that divergence was not a cosmetic shape
+    difference: any composite holding a multipole raised ``TypeError:
+    Cannot concatenate arrays with different numbers of dimensions``. The
+    whole 2913-test potential suite passed with it broken, because nothing
+    asserted a shape here.
+
+    Pinned against `HernquistPotential` rather than against literals, so it
+    tracks the library's convention instead of a snapshot of it.
+    """
+    src = HernquistPotential(
+        m_tot=u.Q(1e12, "Msun"), r_s=u.Q(5.0, "kpc"), units="galactic"
+    )
+    mp = MultipoleProfilePotential.from_potential(
+        src,
+        r_min=u.Q(1e-2, "kpc"),
+        r_max=u.Q(1e2, "kpc"),
+        n_r=64,
+        l_max=2,
+        symmetry="plane_reflection",
+    )
+    other = HernquistPotential(
+        m_tot=u.Q(1e11, "Msun"), r_s=u.Q(3.0, "kpc"), units="galactic"
+    )
+
+    xyz1 = u.Q(jnp.asarray([1.0, 2.0, 3.0]), "kpc")
+    xyz7 = u.Q(jnp.ones((7, 3)), "kpc")
+    t7 = u.Q(jnp.linspace(0.0, 100.0, 7), "Myr")
+    t0 = u.Q(0.0, "Myr")
+
+    for xyz, t in ((xyz1, t7), (xyz1, t0), (xyz7, t0), (xyz7, t7)):
+        assert jnp.shape(mp.potential(xyz, t).value) == jnp.shape(
+            other.potential(xyz, t).value
+        ), (jnp.shape(xyz.value), jnp.shape(t.value))
+
+    # The composite stacks its components, so a shape divergence is a crash.
+    comp = CompositePotential(a=mp, b=other)
+    assert jnp.shape(comp.potential(xyz1, t7).value) == ()
+    assert jnp.shape(comp.potential(xyz7, t0).value) == (7,)
