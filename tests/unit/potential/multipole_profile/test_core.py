@@ -23,7 +23,8 @@ from galax.potential._src.utils import safe_vector_norm
 
 XFAIL_T = (
     "batched `t` on a grid build: the expansion's hardcoded `axis=1` concat "
-    "cannot take the time axis the interpolated coefficients gain"
+    "cannot take the time axis the interpolated coefficients gain -- "
+    "https://github.com/GalacticDynamics/galax/issues/938"
 )
 """Why `potential`/`density` are expected to fail on a batched `t`."""
 
@@ -1035,6 +1036,9 @@ def test_a_time_grid_build_evaluates_at_a_batch_of_times(method: str) -> None:
     It matters because a batch of times is how energies are taken along an
     orbit, so `potential_energy(pot, orbit)` does not yet work on a
     grid-built potential. `jax.vmap` over ``t`` is the workaround.
+
+    Tracked in https://github.com/GalacticDynamics/galax/issues/938, which
+    also records the direction and the dead end.
 
     Giving the two methods the decorator was tried and reverted: it fixes
     this, but `vectorize_method` broadcasts the *loop* dims of ``xyz`` and
