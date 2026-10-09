@@ -6,6 +6,8 @@ __all__ = [
 
 from typing import Any
 
+import equinox as eqx
+
 import quaxed.numpy as jnp
 import unxt as u
 from dataclassish.converters import Unless
@@ -131,5 +133,27 @@ def time_interpolated_parameter(ts: Any, values: Any, /) -> CustomParameter:
     # so the label never reaches the answer -- but labelling it `values.unit`
     # made `derivs.uconvert('Msun/Gyr')` raise and `derivs.uconvert('Msun')`
     # silently succeed, which is exactly backwards.
+    # Strictly increasing, and finite. `eval_log_spline` brackets a query with
+    # a sorted-grid search, so an out-of-order grid returns a wrong number
+    # rather than failing -- this is the one way to get a quietly wrong answer
+    # out of here, and it was reachable because only
+    # `MultipoleProfilePotential` checked it, not this public factory.
+    #
+    # `eqx.error_if` rather than a Python `if`, because unlike the shape checks
+    # above this compares *values*, which a Python `if` cannot do under trace.
+    # Non-finite is checked separately: `inf` passes `diff > 0` (inf - 1 is
+    # inf) and then makes every interpolated value `nan`.
+    bad = jnp.any(jnp.diff(ts_.value) <= 0) | jnp.any(~jnp.isfinite(ts_.value))
+    ts_ = u.Q(
+        eqx.error_if(
+            ts_.value,
+            bad,
+            "ts must be strictly increasing and finite; it is searched as a "
+            "sorted grid, so an out-of-order one returns wrong values rather "
+            "than failing",
+        ),
+        ts_.unit,
+    )
+
     derivs = u.Q(fit_log_spline(ts_.value, values_.value), values_.unit / ts_.unit)
     return CustomParameter(func=_interpolate, args=(ts_, values_, derivs))

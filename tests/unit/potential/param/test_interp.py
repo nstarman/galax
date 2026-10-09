@@ -1,5 +1,6 @@
 """Test :mod:`galax.potential._src.params.interp`."""
 
+import equinox as eqx
 import jax
 import pytest
 
@@ -136,3 +137,46 @@ def test_the_knot_derivatives_carry_the_right_dimension(time_unit: str) -> None:
     assert jnp.allclose(
         u.ustrip(u.unit("Msun"), p(u.Q(1.5, time_unit))), 1.0 + slope * 1.5
     )
+
+
+@pytest.mark.parametrize(
+    "ts",
+    [
+        u.Q(jnp.asarray([0.0, 2.0, 1.0]), "Gyr"),
+        u.Q(jnp.asarray([0.0, 1.0, 1.0]), "Gyr"),
+        u.Q(jnp.asarray([0.0, 1.0, jnp.inf]), "Gyr"),
+        u.Q(jnp.asarray([0.0, 1.0, jnp.nan]), "Gyr"),
+    ],
+    ids=["unsorted", "duplicate", "inf", "nan"],
+)
+def test_the_factory_rejects_a_grid_it_cannot_search(ts) -> None:
+    """An unsearchable grid must fail, not return a plausible wrong number.
+
+    REGRESSION: only `MultipoleProfilePotential` checked this, so the public
+    factory would accept ``ts = [0, 2, 1]``, build, and answer ``2.0`` at
+    ``t = 1.5`` where the table says ``2.5`` -- silently, because
+    `eval_log_spline` brackets with a sorted-grid search and an out-of-order
+    grid simply selects the wrong interval.
+
+    Finiteness is a separate condition from monotonicity, not a special case
+    of it: ``inf`` *passes* ``diff > 0``, since ``inf - 1`` is ``inf``, and
+    then every interpolated value is ``nan``. ``nan`` is caught by the
+    monotonicity test already, because no comparison involving it is true.
+
+    `eqx.error_if` rather than a Python `if`, since unlike the shape checks
+    this compares values, which cannot be branched on under trace.
+    """
+    values = u.Q(jnp.asarray([1.0, 2.0, 3.0]), "Msun")
+    # `eqx.error_if` fires here, at construction: the factory is not jitted,
+    # so the condition is concrete and raises before anything is returned.
+    with pytest.raises(eqx.EquinoxRuntimeError, match="strictly increasing"):
+        time_interpolated_parameter(ts, values)
+
+
+def test_the_factory_still_accepts_a_sorted_grid() -> None:
+    """The guard above must not reject what it is meant to allow."""
+    p = time_interpolated_parameter(
+        u.Q(jnp.asarray([0.0, 1.0, 2.0]), "Gyr"),
+        u.Q(jnp.asarray([1.0, 2.0, 3.0]), "Msun"),
+    )
+    assert jnp.allclose(u.ustrip(u.unit("Msun"), p(u.Q(0.5, "Gyr"))), 1.5)

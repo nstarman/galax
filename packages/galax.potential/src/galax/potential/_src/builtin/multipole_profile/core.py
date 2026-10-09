@@ -116,8 +116,8 @@ class AbstractMultipoleProfilePotential(MultipoleProfileMixin, AbstractSinglePot
     Each radial profile is stored as knot values plus knot derivatives with
     respect to :math:`\log r`, so evaluation needs no spline solve and the
     coefficients remain ordinary `ParameterField`\ s -- which is what allows a
-    caller to supply time-dependent ones. Building an expansion *on* a time
-    grid is https://github.com/GalacticDynamics/galax/issues/849
+    caller to supply time-dependent ones, and is what `from_density` uses to
+    build an expansion *on* a time grid when ``t`` is an array.
 
     ``_density`` is reconstructed from the stored :math:`\rho_{lm}`
     profiles, so it is consistent with the expansion itself rather than with
@@ -263,11 +263,15 @@ def _check_build_times(t: Float[Array, "..."], /) -> bool:
     # Checked here rather than in `time_interpolated_parameter`: this sees
     # the concrete build-time `t`, while that factory may be traced, where
     # comparing values raises instead of validating.
-    if t.ndim == 1 and not bool(jnp.all(jnp.diff(t) > 0)):
+    # Finiteness is separate from monotonicity: `inf` passes `diff > 0`,
+    # because `inf - 1` is `inf`, and then every interpolated value is
+    # `nan`. `nan` is already caught, since no comparison with it is true.
+    if t.ndim == 1 and not bool(jnp.all(jnp.isfinite(t)) & jnp.all(jnp.diff(t) > 0)):
         msg = (
-            "t must be strictly increasing; the expansion is interpolated "
-            "against it with a sorted-grid search, so an out-of-order grid "
-            "returns wrong values rather than failing"
+            "t must be strictly increasing and finite; the expansion is "
+            "interpolated against it with a sorted-grid search, so an "
+            "out-of-order grid returns wrong values rather than failing, "
+            "and a non-finite entry makes every interpolated value nan"
         )
         raise ValueError(msg)
     return bool(t.ndim == 1)

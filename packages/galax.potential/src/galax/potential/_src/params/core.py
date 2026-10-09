@@ -125,7 +125,9 @@ class CustomParameter(AbstractParameter):
         below.
     kwargs : dict
         The same, by name. Use it once positional stops reading clearly.
-        Keywords given at the call site override these.
+        Keywords given at the call site override these. Do not store a key
+        named ``ustrip``: unlike a call-site one it is *not* consumed here,
+        and reaches ``func``.
 
     Examples
     --------
@@ -170,6 +172,14 @@ class CustomParameter(AbstractParameter):
     nothing for it, so saving a potential silently drops the data. ``args``
     is an ordinary field, so its arrays are leaves and both work.
 
+    Being leaves is also the constraint: everything in ``args`` and
+    ``kwargs`` passes through this method's `jax.jit`, so it must be a JAX
+    type. Arrays, Quantities, ``None``, Python scalars and nested
+    tuples/dicts of those are fine; a string, a function or a `unxt` unit
+    object raises ``TypeError: Error interpreting argument ... as an
+    abstract array``. Anything genuinely static belongs in a closure over
+    ``func``, which is where the static field still earns its keep.
+
     """
 
     # `Callable[..., Any]`, not `ParameterCallable`: with `args` the function
@@ -186,7 +196,11 @@ class CustomParameter(AbstractParameter):
     ) -> gt.QuSzAny | gt.SzAny:
         # Call-site keywords win over stored ones, which is what makes the
         # stored ones defaults rather than a second, invisible call site.
-        # `ustrip` never reaches `func`: it is this class's own argument, so
-        # storing it under that name has no effect.
+        #
+        # A *call-site* `ustrip` is consumed by this method and never reaches
+        # `func`, being a named parameter. A *stored* one is not: `self.kwargs`
+        # is merged into what gets forwarded, so `kwargs={"ustrip": ...}` is
+        # handed straight to `func` and raises `TypeError` on any signature
+        # that does not accept it. Do not store one.
         out = self.func(t, *self.args, **{**self.kwargs, **kwargs})
         return out if ustrip is None else u.ustrip(AllowValue, ustrip, out)

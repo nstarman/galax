@@ -556,9 +556,11 @@ def test_an_array_time_builds_a_grid_and_does_not_average() -> None:
 
     An array ``t`` now builds a grid, so the failure mode this guards is no
     longer "it raises" but "it returns the mean". Both endpoints are checked
-    against their own single-time builds, and the midpoint is checked to be
-    the mean -- which for a linear-in-``t`` amplitude it genuinely is, so
-    asserting the endpoints is what distinguishes a grid from an average.
+    against their own single-time builds, and that is the whole test: the
+    midpoint is deliberately *not* asserted, because for a linear-in-``t``
+    amplitude the mean of the two builds is the correct answer there, so a
+    midpoint check passes equally for a grid and for the averaging bug. Only
+    the endpoints tell them apart.
     """
 
     def rho(xyz, t):
