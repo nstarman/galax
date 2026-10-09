@@ -126,5 +126,10 @@ def time_interpolated_parameter(ts: Any, values: Any, /) -> CustomParameter:
         )
         raise ValueError(msg)
 
-    derivs = u.Q(fit_log_spline(ts_.value, values_.value), values_.unit)
+    # `values.unit / ts.unit`, because this is d(values)/d(ts). The array is
+    # the same either way -- `_interpolate` reads raw `.value` for all three,
+    # so the label never reaches the answer -- but labelling it `values.unit`
+    # made `derivs.uconvert('Msun/Gyr')` raise and `derivs.uconvert('Msun')`
+    # silently succeed, which is exactly backwards.
+    derivs = u.Q(fit_log_spline(ts_.value, values_.value), values_.unit / ts_.unit)
     return CustomParameter(func=_interpolate, args=(ts_, values_, derivs))

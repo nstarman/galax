@@ -106,3 +106,33 @@ def test_the_factory_rejects_mismatched_inputs(ts, values, match: str) -> None:
     """The grid and the table must agree, and there must be something to interpolate."""
     with pytest.raises(ValueError, match=match):
         time_interpolated_parameter(ts, values)
+
+
+@pytest.mark.parametrize("time_unit", ["Gyr", "Myr"])
+def test_the_knot_derivatives_carry_the_right_dimension(time_unit: str) -> None:
+    """``derivs`` is d(values)/d(ts), so it is ``values.unit / ts.unit``.
+
+    REGRESSION: it was labelled ``values.unit``. The array was right and the
+    interpolated answer was right -- `_interpolate` reads raw ``.value`` for
+    the grid, the values and the derivatives alike, so the label never
+    reached it -- but the stored quantity was dimensionally a lie, and
+    exactly backwards about it: converting to the correct ``Msun/Gyr``
+    raised, while converting to the wrong ``Msun`` silently succeeded.
+
+    Parametrized over the time unit because the bug is invisible unless the
+    label is compared against ``ts``: with a single unit in play, any wrong
+    label is a fixed wrong label.
+    """
+    slope = 3.0  # Msun per `time_unit`
+    ts = u.Q(jnp.asarray([0.0, 1.0, 2.0, 3.0]), time_unit)
+    values = u.Q(1.0 + slope * u.ustrip(u.unit(time_unit), ts), "Msun")
+
+    p = time_interpolated_parameter(ts, values)
+    derivs = p.args[2]
+
+    assert derivs.unit == values.unit / ts.unit
+    assert jnp.allclose(u.ustrip(u.unit(f"Msun/{time_unit}"), derivs), slope)
+    # The answer is unchanged by the relabelling.
+    assert jnp.allclose(
+        u.ustrip(u.unit("Msun"), p(u.Q(1.5, time_unit))), 1.0 + slope * 1.5
+    )
