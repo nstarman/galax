@@ -125,9 +125,9 @@ class CustomParameter(AbstractParameter):
         below.
     kwargs : dict
         The same, by name. Use it once positional stops reading clearly.
-        Keywords given at the call site override these. Do not store a key
-        named ``ustrip``: unlike a call-site one it is *not* consumed here,
-        and reaches ``func``.
+        Keywords given at the call site override these. A stored ``ustrip``
+        is *not* this method's own argument -- it is forwarded to ``func``
+        like any other key -- so it is not a way to set a default unit.
 
     Examples
     --------
@@ -199,8 +199,10 @@ class CustomParameter(AbstractParameter):
         #
         # A *call-site* `ustrip` is consumed by this method and never reaches
         # `func`, being a named parameter. A *stored* one is not: `self.kwargs`
-        # is merged into what gets forwarded, so `kwargs={"ustrip": ...}` is
-        # handed straight to `func` and raises `TypeError` on any signature
-        # that does not accept it. Do not store one.
+        # is merged into what gets forwarded, so `kwargs={"ustrip": ...}` goes
+        # to `func` like any other key. Storing one is therefore not a way to
+        # set this method's `ustrip`, and for the only value anyone would want
+        # there -- a unit -- it does not even get that far, failing the leaf
+        # constraint below first.
         out = self.func(t, *self.args, **{**self.kwargs, **kwargs})
         return out if ustrip is None else u.ustrip(AllowValue, ustrip, out)

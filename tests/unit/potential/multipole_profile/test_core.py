@@ -823,6 +823,13 @@ def test_time_grid_clamps_outside_the_grid() -> None:
         (jnp.asarray([1.0]), "at least 2 entries"),
         (jnp.asarray([0.0, 200.0, 100.0, 300.0]), "strictly increasing"),
         (jnp.asarray([0.0, 100.0, 100.0, 300.0]), "strictly increasing"),
+        # `inf` satisfies `diff > 0` -- `inf - 100` is `inf` -- so finiteness
+        # is a separate condition, and without it this builds and then makes
+        # every interpolated value `nan`. `nan` needs no separate case: no
+        # comparison involving it is true, so monotonicity already rejects it.
+        (jnp.asarray([0.0, 100.0, jnp.inf]), "strictly increasing and finite"),
+        (jnp.asarray([-jnp.inf, 100.0, 300.0]), "strictly increasing and finite"),
+        (jnp.asarray([0.0, jnp.nan, 300.0]), "strictly increasing and finite"),
     ],
 )
 def test_time_grid_rejects_a_malformed_time(t, match: str) -> None:
