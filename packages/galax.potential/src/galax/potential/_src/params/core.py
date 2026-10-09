@@ -142,7 +142,6 @@ class CustomParameter(AbstractParameter):
 
     Data the function needs goes in ``args``, not in a closure:
 
-    >>> import quaxed.numpy as jnp
     >>> def scaled(t, m0):
     ...     return m0 * u.ustrip("Gyr", t)
 
