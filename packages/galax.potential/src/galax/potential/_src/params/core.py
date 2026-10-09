@@ -7,6 +7,7 @@ __all__ = [
 
 import functools as ft
 
+from collections.abc import Callable
 from typing import Any, final
 
 import equinox as eqx
@@ -17,7 +18,7 @@ import unxt as u
 from unxt.quantity import AllowValue
 
 import galax.potential.custom_types as gt
-from .base import AbstractParameter, ParameterCallable
+from .base import AbstractParameter
 
 t0 = u.Q(0, "Myr")
 
@@ -118,6 +119,9 @@ class CustomParameter(AbstractParameter):
     ----------
     func : Callable[[BBtRealQuSz0], Array[float, (*shape,)]]
         The function to use to compute the parameter value.
+    args : tuple
+        Extra arguments passed to ``func`` after ``t``. Put any *data* the
+        function needs here rather than closing over it -- see below.
 
     Examples
     --------
@@ -132,13 +136,36 @@ class CustomParameter(AbstractParameter):
     >>> up(u.Q(1e3, "Myr"))
     Q(1.e+12, 'Myr solMass / Gyr')
 
+    Data the function needs goes in ``args``, not in a closure:
+
+    >>> import quaxed.numpy as jnp
+    >>> def scaled(t, m0):
+    ...     return m0 * u.ustrip("Gyr", t)
+
+    >>> up = CustomParameter(func=scaled, args=(u.Q(1e9, "Msun"),))
+    >>> up(u.Q(2.0, "Gyr"))
+    Q(2.e+09, 'solMass')
+
+    ``func`` is a *static* field -- it is hashed, not traced -- so arrays
+    captured in a closure are invisible to JAX. They are not pytree leaves,
+    which costs two things that are easy to miss. A closure is hashed by
+    identity, so rebuilding one over the *same* data is a fresh `jax.jit`
+    cache entry and recompiles; and `equinox.tree_serialise_leaves` writes
+    nothing for it, so saving a potential silently drops the data. ``args``
+    is an ordinary field, so its arrays are leaves and both work.
+
     """
 
-    func: ParameterCallable = eqx.field(static=True)
+    # `Callable[..., Any]`, not `ParameterCallable`: with `args` the function
+    # takes whatever data it was given after `t`, so its signature is the
+    # caller's business. `ParameterCallable` still describes `__call__` below,
+    # which is what a *parameter* must look like and is unchanged.
+    func: Callable[..., Any] = eqx.field(static=True)
+    args: tuple[Any, ...] = eqx.field(default=())
 
     @ft.partial(jax.jit, static_argnames=("ustrip",))
     def __call__(
         self, t: gt.BBtQuSz0, *, ustrip: u.AbstractUnit | None = None, **kwargs: Any
     ) -> gt.QuSzAny | gt.SzAny:
-        out = self.func(t, **kwargs)
+        out = self.func(t, *self.args, **kwargs)
         return out if ustrip is None else u.ustrip(AllowValue, ustrip, out)

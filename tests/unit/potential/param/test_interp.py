@@ -6,7 +6,7 @@ import pytest
 import quaxed.numpy as jnp
 import unxt as u
 
-from galax.potential.params import TimeInterpolatedParameter
+from galax.potential.params import time_interpolated_parameter
 
 TS = u.Q(jnp.asarray([0.0, 1.0, 2.0, 3.0]), "Gyr")
 
@@ -14,7 +14,7 @@ TS = u.Q(jnp.asarray([0.0, 1.0, 2.0, 3.0]), "Gyr")
 def _linear(slope: float = 2.0):
     """Build a parameter exactly linear in ``t``, so interpolation is exact."""
     values = u.Q(1.0 + slope * u.ustrip(u.unit("Gyr"), TS), "Msun")
-    return TimeInterpolatedParameter.from_values(TS, values), slope
+    return time_interpolated_parameter(TS, values), slope
 
 
 def test_returns_the_tabulated_value_at_a_knot() -> None:
@@ -54,7 +54,7 @@ def test_clamps_outside_the_grid() -> None:
 def test_interpolates_array_valued_parameters() -> None:
     """Time is the leading axis; every trailing axis is carried along."""
     values = u.Q(jnp.stack([jnp.full((2, 3), float(i)) for i in range(4)]), "Msun")
-    p = TimeInterpolatedParameter.from_values(TS, values)
+    p = time_interpolated_parameter(TS, values)
     got = u.ustrip(u.unit("Msun"), p(u.Q(1.5, "Gyr")))
     assert got.shape == (2, 3)
     assert jnp.allclose(got, 1.5)
@@ -102,7 +102,7 @@ def test_is_jittable_and_differentiable() -> None:
         ),
     ],
 )
-def test_from_values_rejects_mismatched_inputs(ts, values, match: str) -> None:
+def test_the_factory_rejects_mismatched_inputs(ts, values, match: str) -> None:
     """The grid and the table must agree, and there must be something to interpolate."""
     with pytest.raises(ValueError, match=match):
-        TimeInterpolatedParameter.from_values(ts, values)
+        time_interpolated_parameter(ts, values)

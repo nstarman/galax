@@ -18,6 +18,7 @@ from galax.potential._src.builtin.multipole_profile.core import (
     MultipoleProfilePotential,
 )
 from galax.potential._src.harmonic import default_angular_resolution, lm_keys
+from galax.potential._src.params.interp import _interpolate
 from galax.potential._src.utils import safe_vector_norm
 
 G_GALACTIC = float(default_constants["G"].decompose(u.unitsystem("galactic")).value)
@@ -573,7 +574,7 @@ def test_an_array_time_builds_a_grid_and_does_not_average() -> None:
     }
     ts = u.Q(jnp.asarray([0.0, 1000.0]), "Myr")
     grid = MultipoleProfilePotential.from_density(rho, t=ts, **kw)
-    assert isinstance(grid.phi_lm, gpp.TimeInterpolatedParameter)
+    assert grid.phi_lm.func is _interpolate  # tabulated, not constant
 
     xyz = u.Q(jnp.asarray([2.0, 1.0, 0.5]), "kpc")
 
@@ -729,7 +730,7 @@ def test_time_grid_build_matches_the_closed_form_at_each_knot() -> None:
     The density is a Hernquist of *constant mass* whose scale radius grows,
     so `_hernquist_phi` is exact at every time and this pins the whole
     time-grid path -- the `vmap` over `t`, the per-coefficient
-    `TimeInterpolatedParameter`, and the interpolation -- against physics
+    `time_interpolated_parameter`, and the interpolation -- against physics
     rather than against another `galax` build.
     """
     ts = u.Q(jnp.linspace(0.0, 400.0, 5), "Myr")
@@ -743,7 +744,7 @@ def test_time_grid_build_matches_the_closed_form_at_each_knot() -> None:
         t=ts,
         units="galactic",
     )
-    assert isinstance(pot.phi_lm, gpp.TimeInterpolatedParameter)
+    assert pot.phi_lm.func is _interpolate  # tabulated, not constant
 
     xyz = u.Q(jnp.asarray([3.0, 1.0, 2.0]), "kpc")
     r = jnp.linalg.vector_norm(u.ustrip(u.unit("kpc"), xyz))
@@ -785,7 +786,7 @@ def test_time_grid_clamps_outside_the_grid() -> None:
 
     Continuing the edge cubic in time would invent structure the tabulation
     knows nothing about, and for a coefficient that diverges fast. See
-    `TimeInterpolatedParameter`.
+    `time_interpolated_parameter`.
     """
     ts = u.Q(jnp.linspace(0.0, 400.0, 5), "Myr")
     pot = gp.MultipoleProfilePotential.from_density(

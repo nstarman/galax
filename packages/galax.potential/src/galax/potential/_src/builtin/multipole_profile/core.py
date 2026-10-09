@@ -33,7 +33,7 @@ from galax.potential._src.jax import vectorize_method
 from galax.potential._src.params.base import AbstractParameter
 from galax.potential._src.params.constant import ConstantParameter
 from galax.potential._src.params.field import ParameterField
-from galax.potential._src.params.interp import TimeInterpolatedParameter
+from galax.potential._src.params.interp import time_interpolated_parameter
 from galax.potential._src.symmetry import Symmetry
 
 
@@ -254,7 +254,7 @@ def _check_build_times(t: Float[Array, "..."], /) -> bool:
         )
         raise ValueError(msg)
     # Strictly increasing, for the same reason the shape is checked: silence.
-    # `TimeInterpolatedParameter` brackets a query with `jnp.searchsorted`,
+    # `time_interpolated_parameter` brackets a query with `jnp.searchsorted`,
     # which assumes a sorted grid and does not say otherwise -- an unsorted
     # one returns an index for some other interval, so the build succeeds and
     # every interpolated value is quietly wrong. `interpax` sorts internally
@@ -520,7 +520,7 @@ class MultipoleProfilePotential(AbstractMultipoleProfilePotential):
 
             A **scalar** builds one expansion, valid at that time only. A
             **1-D** array builds one per time and stores each coefficient as
-            a `TimeInterpolatedParameter`, interpolating between them at
+            a `time_interpolated_parameter`, interpolating between them at
             evaluation -- which is how a genuinely time-varying density is
             expanded. Outside ``[t[0], t[-1]]`` the expansion is *clamped* to
             the boundary time rather than extrapolated.
@@ -642,7 +642,7 @@ class MultipoleProfilePotential(AbstractMultipoleProfilePotential):
             q = u.Q(coeffs[name], unit)
             if not on_time_grid:
                 return q
-            return TimeInterpolatedParameter.from_values(t_grid, q)
+            return time_interpolated_parameter(t_grid, q)
 
         return cls(
             # The radial grid is build-time configuration and is the same at
