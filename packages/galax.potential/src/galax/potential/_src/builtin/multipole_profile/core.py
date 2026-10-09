@@ -60,7 +60,18 @@ class MultipoleProfileMixin(AbstractSinglePotential):
     def _params(self, t: gt.BBtQorVSz0, /) -> gt.Params:
         """Build the parameter dictionary from the potential's fields."""
 
+    # Vectorized so the body always sees a *scalar* `t`, with `jax.jit`
+    # outermost as `monari2016` does it -- that order keeps the exposed
+    # signature the supertype's, which `vectorize_method` on the outside
+    # erases to `(*args, **kwargs)`.
+    # Without it a batched `t` reaches `_params`, whose coefficients are
+    # `CustomParameter`s on a time grid and so gain a leading time axis --
+    # which the expansion's positional `axis=1` concat and its broadcasts
+    # are not written for. `_gradient` had the decorator and worked;
+    # these two did not and raised a bare JAX shape error on any batched
+    # `t`, which is what `potential_energy(pot, orbit)` passes.
     @ft.partial(jax.jit)
+    @vectorize_method(signature="(3),()->()")
     def _potential(self, xyz: gt.BBtQorVSz3, t: gt.BBtQorVSz0, /) -> gt.BBtSz0:
         xyz = u.ustrip(AllowValue, self.units["length"], xyz)
         return expansion_potential(  # type: ignore[no-any-return]
@@ -93,7 +104,18 @@ class MultipoleProfileMixin(AbstractSinglePotential):
             self.lm_keys,
         )
 
+    # Vectorized so the body always sees a *scalar* `t`, with `jax.jit`
+    # outermost as `monari2016` does it -- that order keeps the exposed
+    # signature the supertype's, which `vectorize_method` on the outside
+    # erases to `(*args, **kwargs)`.
+    # Without it a batched `t` reaches `_params`, whose coefficients are
+    # `CustomParameter`s on a time grid and so gain a leading time axis --
+    # which the expansion's positional `axis=1` concat and its broadcasts
+    # are not written for. `_gradient` had the decorator and worked;
+    # these two did not and raised a bare JAX shape error on any batched
+    # `t`, which is what `potential_energy(pot, orbit)` passes.
     @ft.partial(jax.jit)
+    @vectorize_method(signature="(3),()->()")
     def _density(self, xyz: gt.BBtQorVSz3, t: gt.BBtQorVSz0, /) -> gt.BBtSz0:
         xyz = u.ustrip(AllowValue, self.units["length"], xyz)
         return expansion_density(  # type: ignore[no-any-return]

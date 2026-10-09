@@ -999,3 +999,50 @@ def test_refining_the_time_grid_converges_on_a_direct_build() -> None:
 
     assert errs[1] < errs[0] / 5.0, errs
     assert errs[2] < errs[1] / 5.0, errs
+
+
+@pytest.mark.parametrize("method", ["potential", "density", "gradient"])
+def test_a_time_grid_build_evaluates_at_a_batch_of_times(method: str) -> None:
+    """A batched ``t`` must work, and agree with evaluating one at a time.
+
+    REGRESSION: `_gradient` carried `vectorize_method`, so its body always saw
+    a scalar ``t``; `_potential` and `_density` did not. On a grid build the
+    coefficients are time-interpolated, so a batched ``t`` gave them a leading
+    time axis, which the expansion's positional ``axis=1`` concat and its
+    broadcasts are not written for -- a bare ``TypeError: Cannot concatenate
+    arrays ...`` naming no galax concept.
+
+    It matters because batched ``t`` is how energies are taken along an orbit:
+    ``potential_energy(pot, orbit)`` and ``total_energy(pot, orbit)`` both
+    failed on exactly the potentials this feature exists to build, while a
+    constant-parameter potential was fine. Nothing caught it because every
+    other test here evaluates at a scalar ``t``.
+
+    Asserted against a per-element loop rather than a closed form, so it pins
+    the batching itself: the two agree to the bit.
+    """
+
+    def rho(xyz, t):
+        r = safe_vector_norm(xyz)
+        amp = 1.0 + 0.3 * jnp.sin(2.0 * jnp.pi * t / 400.0)
+        return amp / (2.0 * jnp.pi) / r / (1.0 + r) ** 3
+
+    pot = MultipoleProfilePotential.from_density(
+        rho,
+        r_min=u.Q(1e-2, "kpc"),
+        r_max=u.Q(1e2, "kpc"),
+        n_r=64,
+        l_max=0,
+        symmetry="spherical",
+        units="galactic",
+        t=u.Q(jnp.linspace(0.0, 400.0, 5), "Myr"),
+    )
+
+    xyz = u.Q(jnp.asarray([[2.0, 1.0, 0.5], [3.0, 0.0, 1.0], [1.0, 1.0, 1.0]]), "kpc")
+    ts = u.Q(jnp.asarray([0.0, 100.0, 200.0]), "Myr")
+
+    got = getattr(pot, method)(xyz, ts)
+    want = jnp.stack(
+        [u.ustrip(got.unit, getattr(pot, method)(xyz[i], ts[i])) for i in range(3)]
+    )
+    assert jnp.array_equal(u.ustrip(got.unit, got), want)
