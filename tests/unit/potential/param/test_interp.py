@@ -213,3 +213,23 @@ def test_the_gradient_at_a_boundary_knot_is_the_interior_slope() -> None:
     # Outside, the value is clamped and the gradient is genuinely zero.
     assert float(grad(-1.0)) == 0.0
     assert float(grad(3.0)) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("ts", "values", "which"),
+    [
+        (jnp.asarray([0.0, 1.0, 2.0]), jnp.asarray([1.0, 2.0, 3.0]), "ts"),
+        (u.Q(jnp.asarray([0.0, 1.0, 2.0]), "Gyr"), [1.0, 2.0, 3.0], "values"),
+    ],
+    ids=["ts-bare", "values-bare"],
+)
+def test_a_unitless_argument_says_which_one(ts, values, which: str) -> None:
+    """The commonest wrong input must name itself.
+
+    The converter's own failure is ``TypeError: from_() missing 1 required
+    keyword-only argument: 'unit'``, which names neither the argument nor
+    what it wanted, and is raised identically whichever of the two is at
+    fault.
+    """
+    with pytest.raises(TypeError, match=f"{which} must carry units"):
+        time_interpolated_parameter(ts, values)
