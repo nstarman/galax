@@ -15,7 +15,7 @@ B=$S/bench
 cd $S/pr964
 JAX_ENABLE_X64=1 .venv/bin/python $B/bench_delta.py
 
-# PR 3a (galax @ 8434d869); gala's Staeckel C++ build goes first on the path
+# PR 3a (galax @ 39980037); gala's Staeckel C++ build goes first on the path
 cd /Users/nmrs/local/galax/.claude/worktrees/relaxed-feistel-18a2be
 PYTHONPATH=/Users/nmrs/.cache/uv/git-v1/checkouts/aa61f6cc8cf2ca48/6cd50cef/build/lib.macosx-11.0-arm64-cpython-312 \
   JAX_ENABLE_X64=1 PYTHONDONTWRITEBYTECODE=1 uv run --frozen python $B/bench_staeckel_limits.py
@@ -52,7 +52,7 @@ galax and gala versions with the same parameters.
 
 Δ is fixed per potential at `staeckel_fudge_delta` evaluated at (R, z) = (8, 0.5) kpc,
 and both codes get the same Δ. The galax stages use the private functions in
-`_staeckel_core.py` and `_staeckel_limits.py`. Each stage is `jax.jit(jax.vmap(...))`,
+`_staeckel_prolate.py` and `_staeckel_limits.py`. Each stage is `jax.jit(jax.vmap(...))`,
 compiled ahead of time, and timed warm. The stages are cumulative:
 
 - **(a)** `integrals_of_motion`.

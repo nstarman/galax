@@ -42,7 +42,7 @@ def caption(fig, env, extra=""):
     fig.text(0.01, 0.005,
              f"{env['machine']} ({env['ncpu']} cores), JAX {env['jax']} x64, gala {env['gala']}, "
              f"galax {env['galax_commit']}, {env['date'][:10]}; {load_avgs(env)} "
-             f"(a Zoom call used ~0.6-0.8 core). Best-of-N timings (N>=3). {extra}",
+             f"(a Zoom call and a Backblaze backup used ~1.5 cores). Best-of-N timings (N>=3). {extra}",
              fontsize=7, color=MUTED, ha="left", va="bottom", wrap=True)
 
 

@@ -1,6 +1,6 @@
 """PR 3a: galax Staeckel stages (partial pipeline) vs gala's full C++ Staeckel fudge.
 
-Run from the staeckel/3a-limits worktree (galax @ 8434d869), with gala's Staeckel
+Run from the staeckel/3a-limits worktree (galax @ 39980037), with gala's Staeckel
 C++ extension build first on the path:
 
     cd <galax worktree> && PYTHONPATH=<gala build/lib.macosx-11.0-arm64-cpython-312> \
@@ -30,7 +30,7 @@ from gala.units import galactic
 
 import galax.potential as gp
 import unxt as u
-from galax.dynamics._src.actionangle._staeckel_core import integrals_of_motion, make_F
+from galax.dynamics._src.actionangle._staeckel_prolate import integrals_of_motion, make_F
 from galax.dynamics._src.actionangle._staeckel_limits import (
     attach_tangents,
     default_phi_inf,
