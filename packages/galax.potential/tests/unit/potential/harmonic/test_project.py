@@ -535,13 +535,14 @@ def test_harmonic_coeffs_float32_gradient_with_many_closed_over_scalars() -> Non
 
 
 def test_harmonic_coeffs_gradient_with_an_empty_array_closure() -> None:
-    """A density closing over a zero-size float array still differentiates."""
+    """A density closing over a traced zero-size float array differentiates."""
     keys = lm_keys(0, Symmetry.SPHERICAL)
     n_theta, n_phi = default_angular_resolution(0)
     r = jnp.asarray([0.3, 1.0, 2.5])
-    empty = jnp.zeros((0,))
 
     def total(s):
+        empty = s * jnp.zeros((0,))  # traced, so it gets a (zero-width) column
+
         def rho(xyz, t):
             return s * jnp.exp(-jnp.linalg.norm(xyz, axis=-1)) + jnp.sum(empty)
 
@@ -602,3 +603,17 @@ def test_harmonic_coeffs_repair_step_follows_the_parameter_precision() -> None:
     assert got.dtype == jnp.float64  # promoted by `t`
     err = jnp.max(jnp.abs(got[:3, :2] / ref[:3, :2] - 1))
     assert err < 1e-4, err
+
+
+def test_harmonic_coeffs_with_all_integer_inputs() -> None:
+    """Integer radii and time, with nothing traced, evaluate."""
+    keys = lm_keys(0, Symmetry.SPHERICAL)
+    n_theta, n_phi = default_angular_resolution(0)
+
+    def rho(xyz, t):
+        return jnp.exp(-jnp.linalg.norm(xyz, axis=-1))
+
+    got = harmonic_coeffs(
+        rho, jnp.asarray([1, 2, 3]), 0, keys, n_theta, n_phi, jnp.asarray(0)
+    )
+    assert jnp.all(jnp.isfinite(got))

@@ -577,7 +577,7 @@ class MultipoleProfilePotential(AbstractMultipoleProfilePotential):
         **Gradients.** `jax.grad` and `jax.hessian` through the build are finite
         in float32, also for a steep cusp whose padded samples overflow.
 
-        - Gradient: agrees with float64 to ~2e-5 for an amplitude or a scale
+        - Gradient: agrees with float64 to <5e-5 for an amplitude or a scale
           radius (``gamma`` up to 2.9, brackets to ``[1e-6, 1e6]``). A density
           derivative that is not finite is replaced by a central difference
           (~1e-4 per entry), so the gradient with respect to an exponent over
@@ -585,15 +585,16 @@ class MultipoleProfilePotential(AbstractMultipoleProfilePotential):
         - Hessian: ~5e-5 normwise for a density written in log form,
           ``exp(log(A) - g * log(x) - h * log1p(x))``. Not reliable for the
           plain quotient ``A / (x**g * (1 + x)**h)`` in float32 (wrong or
-          `nan`). Non-finite if the padded density is within a factor of two of
-          the dtype's maximum (~3e38 in float32). Reverse-mode gradients through
-          a ``log`` degrade from ~3e37.
+          `nan`). Can be non-finite when the padded density approaches the
+          dtype's maximum (~3e38 in float32). Reverse-mode gradients through a
+          ``log`` degrade from ~3e37.
         - A closed-over array holding an amplitude and a scale radius loses an
           amplitude of exactly zero; separate scalars keep it.
-        - Only traced floats get derivative columns, each adding a forward pass:
-          the gradient costs ~1-2x a plain one for a few parameters and ~4-6x
-          for 100, and past 128 the derivatives are not repaired. A Hessian
-          costs 1.5-4x to run and ~2x to compile.
+        - Only traced floats get derivative columns (a lookup table closed over
+          as a concrete array has none; one passed as a `jax.jit` argument does),
+          each adding a forward pass: the gradient costs ~1-2x a plain one for
+          a few parameters and ~4-6x for 100, and past 128 the derivatives are
+          not repaired. A Hessian costs 1.5-4x to run and ~2x to compile.
         - A derivative the dtype cannot represent is taken as zero where the
           build discards the sample. A gradient through a used sample within a
           factor of a few of the dtype's maximum is finite but incomplete.

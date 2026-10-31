@@ -396,12 +396,14 @@ def harmonic_coeffs(
       where that is not finite either (the radial build discards such samples).
 
     A column is differentiated with the others held constant, except between the
-    elements of one array. Integers and concrete arrays get no column. Past
+    elements of one array. Integers and concrete arrays get no column (a table
+    passed as a `jax.jit` argument is traced, and gets one). Past
     ``_MAX_PARAMS`` columns ``rho_fn`` is differentiated as written.
 
     The central difference step is ``eps**(1/3)`` of the value, ``eps`` from the
     coarsest parameter dtype: accurate to ~1e-4 for an amplitude or a scale
-    radius, ~2% for an exponent over tens of decades in radius.
+    radius, ~2% for an exponent over tens of decades in radius, and ~1e-2 if
+    ``rho_fn`` computes in lower precision than its parameters.
     """
     uvec, weights = angular_grid(n_theta, n_phi)
     Y = real_ylm(l_max, keys, uvec)  # (n_modes, n_theta, n_phi)
@@ -436,9 +438,12 @@ def harmonic_coeffs(
         return plain
     traced = [r_knots, *(a for a, d in zip(args, diff, strict=True) if d)]
     eps = max(
-        float(jnp.finfo(a.dtype).eps)
-        for a in traced
-        if jnp.issubdtype(a.dtype, jnp.inexact)
+        (
+            float(jnp.finfo(a.dtype).eps)
+            for a in traced
+            if jnp.issubdtype(a.dtype, jnp.inexact)
+        ),
+        default=float(jnp.finfo(Z.dtype).eps),
     )
     out: Array = _DerivativeChain(f_leaves, split, eps)(0, Z, aux)
     return out
