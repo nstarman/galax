@@ -121,20 +121,11 @@ effect at all, since `build_expansion` clamps the anchor to ``lo``: at
 
 
 def _log_rel(x: Float[Array, "..."], floor: float, /) -> Float[Array, "..."]:
-    r"""``log(|x| + floor)``, less a constant that is the same for every entry.
+    r"""``log(|x| + floor)`` less a power-of-two constant, with no gradient.
 
-    The slopes this feeds are differences of logs, so the constant cancels.
-    What it buys is the second derivative: ``d2 log|x| = -(dx / x)^2`` is
-    formed as ``dx^2 * (1 / x^2)``, and once ``|x|`` passes ~1e19 in float32
-    the first factor overflows while the second underflows to zero -- an
-    ``inf * 0``. Dividing by a power of two near the largest entry keeps both
-    factors ordinary. The scale is a power of two so the division is exact,
-    and it carries no gradient.
-
-    Only when it fits: a window that mixes a large entry with a hard zero spans
-    more than the dtype's range, and scaling would flush the zero to nothing
-    (``log 0``). That window keeps the plain log; its slope is meaningless
-    either way, and the caller's gates discard it.
+    The constant cancels in the slopes this feeds. It keeps the second
+    derivative ``-(dx / x)^2`` finite in float32 for ``|x|`` above ~1e19. A
+    window spanning more than the dtype's range keeps the plain log.
     """
     a = jnp.abs(x) + floor
     ref = jax.lax.stop_gradient(jnp.exp2(jnp.floor(jnp.log2(jnp.max(a)))))

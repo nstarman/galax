@@ -828,10 +828,7 @@ def test_float32_forward_mode_agrees_with_reverse_mode_through_the_build() -> No
 def test_the_plain_quotient_gradient_is_finite_and_matches_float64() -> None:
     """``A / (x**g (1 + x)**h)`` has finite ``dA`` and ``ds`` that match float64.
 
-    REGRESSION: JAX differentiates the quotient through ``1 / den**2``, which
-    overflows for ``gamma = 2.9`` long before the density does, so ``ds`` was
-    `nan` (and ``dA`` was lost with it when the two were masked together). The
-    amplitude enters linearly, so its gradient must equal the value itself.
+    The amplitude enters linearly, so ``dA`` equals the value.
     """
     gamma = 2.9
 
@@ -859,12 +856,9 @@ def test_the_plain_quotient_gradient_is_finite_and_matches_float64() -> None:
 def test_float32_hessian_through_a_build_whose_pad_overflows(gamma) -> None:
     """``jax.hessian`` of the build is finite in float32 and matches float64.
 
-    REGRESSION: it was `nan` for a cusp steep enough that the padded samples
-    overflow. Two things did it: a zero cotangent meeting an infinite second
-    derivative of the density, and the solver's ``log|rho|`` slopes, whose
-    second derivative ``dx**2 * (1 / x**2)`` is ``inf * 0`` once ``|x|`` passes
-    ~1e19. Written in log form; the plain quotient's second derivative is not
-    reliable in float32 (see `from_density`'s Notes).
+    For a cusp steep enough that the padded samples overflow. Written in log
+    form; the plain quotient's Hessian is not reliable in float32 (see
+    `from_density`'s Notes).
     """
     total = _grad_build(_log_dehnen(gamma))
     p = jnp.asarray([1.0, 1.0])

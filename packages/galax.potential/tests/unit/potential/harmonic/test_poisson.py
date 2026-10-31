@@ -571,11 +571,7 @@ def test_the_inner_tail_is_exact_when_anchored_above_dropped_samples(l) -> None:
 
 
 def test_log_rel_has_the_slopes_of_log_abs_and_a_finite_second_derivative() -> None:
-    """``_log_rel`` differs from ``log|x| + floor`` by a constant, and is stable.
-
-    REGRESSION: ``d2 log|x| = -(dx / x)**2`` was formed as ``dx**2 * (1 / x**2)``,
-    which is ``inf * 0`` once ``|x|`` passes ~1e19 in float32.
-    """
+    """``_log_rel`` is ``log|x| + floor`` less a constant, with a finite d2 in f32."""
     x64 = jnp.asarray([3.0e30, 1.0e30, 4.0e29])
     floor = 1e-30
     got = _log_rel(x64, floor)
@@ -595,12 +591,7 @@ def test_log_rel_has_the_slopes_of_log_abs_and_a_finite_second_derivative() -> N
 
 
 def test_log_rel_keeps_the_plain_log_when_a_window_has_a_hard_zero() -> None:
-    """A window mixing a large entry with a zero is not rescaled.
-
-    REGRESSION: dividing by the power-of-two scale flushed the zero entry to
-    nothing, so ``log`` gave ``-inf``, the slope fit `nan`, and a `nan`
-    cotangent reached rows whose coefficient is exactly zero.
-    """
+    """A window mixing a large entry with a zero is not rescaled: all finite."""
     for dtype in (jnp.float32, jnp.float64):
         x = jnp.asarray([1.0e3, 0.0, 0.0], dtype=dtype)
         floor = _log_floor(x)

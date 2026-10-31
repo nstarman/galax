@@ -244,9 +244,7 @@ def _columns(g: Callable[[list[Array]], Any], /) -> Callable[[list[Array]], Any]
     """Append one axis to ``g``'s output: its derivative in each scalar input.
 
     Each array gets its own `jax.jvp`, batched over its elements, with every
-    other input held constant, so their tangents are symbolic zeros.
-    `jax.jacfwd` materialises them as zero vectors instead, and ``0 * inf``
-    then spoils a column that does not depend on the overflowing input at all.
+    other input held constant (symbolic-zero tangents).
     """
 
     def dg(leaves: list[Array]) -> Any:
@@ -263,20 +261,11 @@ class _DerivativeChain:
     radius last; ``split`` turns a row into the list of arrays that
     ``f_leaves(leaves, aux)`` takes.
 
-    ``self(0, Z, aux)`` is the value. ``self(k, Z, aux)`` for ``k >= 1`` is the
-    derivative tensor with ``k`` trailing axes of length ``Z.shape[1]``, and
-    each order is a `jax.custom_jvp` whose rule is the next order contracted
-    with the input tangent. Differentiating one therefore never differentiates
-    ``f_leaves`` itself, so a derivative that is not finite is repaired here,
-    once, and a zero cotangent never meets it (``0 * inf``). The orders are
-    built lazily, one per differentiation.
-
-    An entry that is not finite is repaired as follows:
-
-    * the coefficient is not finite: the whole row is zero;
-    * the coefficient is zero: the entry is zero (an underflowed product);
-    * otherwise the entry is a central difference of the ``(k - 1)``-th
-      derivative, or zero if that is not finite either.
+    ``self(0, Z, aux)`` is the value; ``self(k, Z, aux)`` is the derivative
+    tensor with ``k`` trailing axes of length ``Z.shape[1]``. Each order is a
+    `jax.custom_jvp` whose rule is the next order contracted with the input
+    tangent, so ``f_leaves`` itself is never differentiated. Non-finite entries
+    are repaired as `harmonic_coeffs` describes.
     """
 
     def __init__(
@@ -366,9 +355,8 @@ class _DerivativeChain:
             Z, aux = primals
             D = self(k + 1, Z, aux)
             dZ = tangents[0].reshape((Z.shape[0], 1) + (1,) * k + (Z.shape[1],))
-            # A row with no non-zero derivative is dead: the caller discarded
-            # it, and its cotangent may be anything (`nan`, `inf`). Select it
-            # away on a primal-only mask; `nan * 0` would not.
+            # The caller discards rows with no non-zero derivative; select them
+            # away on a primal mask, since their cotangent may be nan or inf.
             dead = ~jnp.any(D != 0, axis=-1)
             tangent = jnp.where(dead, 0.0, jnp.sum(D * dZ, axis=-1))
             return self.impl(k, Z, aux), tangent
@@ -398,41 +386,28 @@ def harmonic_coeffs(
     broadcast over the leading axes -- the `galax` ``_density`` signature. It
     is called once per radius on the full angular grid.
 
-    Differentiating through it is safe where ``rho_fn`` over- or underflows.
-    The derivatives are formed explicitly, one column per differentiable
-    scalar (and one for the radius), and an entry that is not finite is
-    repaired rather than propagated:
+    Derivatives are finite where ``rho_fn`` over- or underflows. They are formed
+    explicitly, one column per traced float (and one for the radius), at every
+    order, and a non-finite entry is repaired:
 
-    * where the coefficient is not finite, the whole row is zero;
-    * where the coefficient is zero, an entry that is not finite is zero (an
-      underflowed ``0 * inf``), but a finite one is kept, so a zero-amplitude
-      component has its gradient;
-    * where the coefficient is finite and non-zero, an entry that is not
-      finite is a central difference (``A / x**g`` differentiates through
-      ``1 / x**(2 g)``, which overflows long before the density does), and zero
-      if that is not finite either: a derivative the dtype cannot represent,
-      at a sample the radial build discards.
+    * coefficient not finite: the whole row is zero;
+    * coefficient zero: non-finite entries are zero, finite ones kept;
+    * otherwise: a central difference of the next-lower derivative, or zero
+      where that is not finite either (the radial build discards such samples).
 
-    The same holds for every higher derivative. A column is differentiated
-    with the others held constant, so an overflow in one does not reach the
-    rest -- except between the elements of one closed-over array. The values
-    are unchanged. Only values being traced get a column; a concrete array (a
-    lookup table) and integers do not. With more than ``_MAX_PARAMS``
-    differentiable scalars the columns are not formed and ``rho_fn`` is
-    differentiated as written.
+    A column is differentiated with the others held constant, except between the
+    elements of one array. Integers and concrete arrays get no column. Past
+    ``_MAX_PARAMS`` columns ``rho_fn`` is differentiated as written.
 
-    The central difference is only as accurate as the function is flat over
-    its step (``eps**(1/3)`` of the value, taking ``eps`` from the coarsest
-    parameter dtype): ~1e-4 for an amplitude or a scale radius, ~2% for an
-    exponent over tens of decades in radius.
+    The central difference step is ``eps**(1/3)`` of the value, ``eps`` from the
+    coarsest parameter dtype: accurate to ~1e-4 for an amplitude or a scale
+    radius, ~2% for an exponent over tens of decades in radius.
     """
     uvec, weights = angular_grid(n_theta, n_phi)
     Y = real_ylm(l_max, keys, uvec)  # (n_modes, n_theta, n_phi)
 
-    # `rho_fn` may close over the values being differentiated (an amplitude, a
-    # scale radius). Hoist them out of the closure so they are explicit inputs
-    # to the rule, and split off the ones with no tangent: integers, and
-    # concrete arrays (a lookup table), which no transformation is tracing.
+    # Traced floats (an amplitude, a scale radius) get derivative columns;
+    # integers and concrete arrays (a lookup table) are held fixed.
     rho_cc, consts = _hoist_consts(rho_fn, r_knots[0] * uvec, t)
     args = [*consts, t]
     diff = [
@@ -441,8 +416,7 @@ def harmonic_coeffs(
     ] + [jnp.issubdtype(t.dtype, jnp.inexact)]
     flat, unravel = ravel_pytree([a for a, d in zip(args, diff, strict=True) if d])
     n_r, n_p = r_knots.shape[0], flat.shape[0]
-    # Rows are independent: row `i` is a function of the parameters and of
-    # `r_knots[i]` alone, so its derivative has `n_p + 1` columns, not `n_r`.
+    # Rows are independent: a row's derivative has `n_p + 1` columns.
     Z = jnp.concat([jnp.broadcast_to(flat, (n_r, n_p)), r_knots[:, None]], axis=1)
     aux = ((uvec, Y, weights), [a for a, d in zip(args, diff, strict=True) if not d])
 

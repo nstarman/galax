@@ -385,9 +385,8 @@ def test_harmonic_coeffs_jacfwd_with_integer_radii() -> None:
 def test_harmonic_coeffs_gradient_survives_a_zero_row_with_disjoint_support() -> None:
     """A zero-amplitude component keeps its gradient where others are non-zero.
 
-    REGRESSION: a row whose density is zero while other rows are not was masked
-    whole, so ``d/dA`` of ``A * [r < 3] + B * [r > 3]`` at ``A = 0`` was 0
-    instead of the coefficient of ``[r < 3]``.
+    ``d/dA`` of ``A * [r < 3] + B * [r > 3]`` at ``A = 0`` is the coefficient of
+    ``[r < 3]``.
     """
     keys = lm_keys(0, Symmetry.SPHERICAL)
     n_theta, n_phi = default_angular_resolution(0)
@@ -446,9 +445,8 @@ def test_harmonic_coeffs_hessian_is_finite_where_the_density_overflows() -> None
 def test_harmonic_coeffs_replaces_a_spurious_overflow_with_a_difference() -> None:
     """The scale-radius gradient of a quotient density is finite and matches float64.
 
-    REGRESSION: ``A / x**g`` differentiates through ``1 / x**(2 g)``, which
-    overflows long before the density does, so the gradient was `nan` at a
-    sample whose value is finite and whose true derivative is ordinary.
+    ``A / x**g`` differentiates through ``1 / x**(2 g)``, which overflows before
+    the density; the gradient at such a sample is a central difference.
     """
     keys = lm_keys(0, Symmetry.SPHERICAL)
     n_theta, n_phi = default_angular_resolution(0)
@@ -517,11 +515,7 @@ def test_harmonic_coeffs_gradient_wrt_an_array_closure_past_the_column_cap(
 
 
 def test_harmonic_coeffs_float32_gradient_with_many_closed_over_scalars() -> None:
-    """A 40-element closure does not lose the float32 overflow protection.
-
-    REGRESSION: past 32 scalars the rule fell back to plain differentiation,
-    which gave `nan` where fewer scalars gave a finite gradient.
-    """
+    """A 40-element closure keeps the float32 overflow protection."""
     keys = lm_keys(0, Symmetry.SPHERICAL)
     n_theta, n_phi = default_angular_resolution(0)
 
@@ -541,10 +535,7 @@ def test_harmonic_coeffs_float32_gradient_with_many_closed_over_scalars() -> Non
 
 
 def test_harmonic_coeffs_gradient_with_an_empty_array_closure() -> None:
-    """A density closing over a zero-size float array still differentiates.
-
-    REGRESSION: the per-array columns indexed a basis of length zero.
-    """
+    """A density closing over a zero-size float array still differentiates."""
     keys = lm_keys(0, Symmetry.SPHERICAL)
     n_theta, n_phi = default_angular_resolution(0)
     r = jnp.asarray([0.3, 1.0, 2.5])
@@ -563,9 +554,8 @@ def test_harmonic_coeffs_gradient_with_an_empty_array_closure() -> None:
 def test_harmonic_coeffs_does_not_differentiate_a_concrete_table(monkeypatch) -> None:
     """A closed-over lookup table gets no derivative columns.
 
-    REGRESSION: every float constant counted, so a table cost time and memory
-    quadratic in its size and, past ``_MAX_PARAMS``, lost the float32 overflow
-    protection (here: `nan`).
+    It does not count towards ``_MAX_PARAMS``, so the float32 overflow
+    protection holds.
     """
     monkeypatch.setattr(project, "_MAX_PARAMS", 4)
     keys = lm_keys(0, Symmetry.SPHERICAL)
@@ -591,9 +581,7 @@ def test_harmonic_coeffs_does_not_differentiate_a_concrete_table(monkeypatch) ->
 def test_harmonic_coeffs_repair_step_follows_the_parameter_precision() -> None:
     """With x64 on, float32 parameters repair with a float32-sized step.
 
-    REGRESSION: the step came from the promoted column dtype (float64, because
-    ``t`` is), and was too small for a density evaluated in float32: the
-    repaired entries were ~8e-3 off.
+    A float64 ``t`` promotes the columns but must not set the step.
     """
     keys = lm_keys(0, Symmetry.SPHERICAL)
     n_theta, n_phi = default_angular_resolution(0)
